@@ -11,7 +11,7 @@ from agent.graph import build_app_graph
 from agent.improve_graph import build_improve_graph
 from agent.preview import build_preview_bundle, build_preview_html
 from agent.utils import make_project_zip
-from agent.voice import transcribe_audio
+from agent.voice import WHISPER_MODEL, transcribe_audio
 
 load_dotenv()
 
@@ -45,6 +45,7 @@ st.markdown(
         font-size: 0.75rem; background: #1e293b; color: #94a3b8;
     }
     div[data-testid="stVerticalBlockBorderWrapper"] { border-color: #1e293b !important; }
+    div[data-testid="stAudioInput"] { margin-top: 0.25rem; }
 
     /* Keep preview panel fixed while left chat scrolls */
     div[data-testid="stHorizontalBlock"] {
@@ -117,20 +118,30 @@ def init_session_state() -> None:
         st.session_state.selected_file = None
     if "right_tab" not in st.session_state:
         st.session_state.right_tab = "Preview"
-    if "last_voice_hash" not in st.session_state:
-        st.session_state.last_voice_hash = None
     if "preview_page" not in st.session_state:
         st.session_state.preview_page = "index.html"
     if "prompt_draft" not in st.session_state:
         st.session_state.prompt_draft = ""
-    if "voice_status" not in st.session_state:
-        st.session_state.voice_status = None
+    if "clear_prompt_draft" not in st.session_state:
+        st.session_state.clear_prompt_draft = False
     if "voice_input_version" not in st.session_state:
         st.session_state.voice_input_version = 0
+    if "last_voice_hash" not in st.session_state:
+        st.session_state.last_voice_hash = None
     if "pending_voice_text" not in st.session_state:
         st.session_state.pending_voice_text = None
     if "ui_style" not in st.session_state:
         st.session_state.ui_style = list(UI_STYLE_PRESETS.keys())[0]
+
+
+def _prepare_prompt_draft() -> None:
+    """Apply pending updates before the prompt text_area widget is created."""
+    if st.session_state.get("clear_prompt_draft"):
+        st.session_state.prompt_draft = ""
+        st.session_state.clear_prompt_draft = False
+    if st.session_state.pending_voice_text:
+        st.session_state.prompt_draft = st.session_state.pending_voice_text
+        st.session_state.pending_voice_text = None
 
 
 def active_session() -> dict:
@@ -307,8 +318,7 @@ def render_session_bar() -> None:
             st.session_state.sessions[session["id"]] = session
             st.session_state.active_session_id = session["id"]
             st.session_state.selected_file = None
-            st.session_state.prompt_draft = ""
-            st.session_state.voice_status = None
+            st.session_state.clear_prompt_draft = True
             st.session_state.last_voice_hash = None
             st.session_state.pending_voice_text = None
             st.session_state.voice_input_version += 1
@@ -349,12 +359,12 @@ def submit_prompt(session: dict, text: str) -> None:
     st.rerun()
 
 
-def handle_voice_input(session: dict) -> None:
-    version = st.session_state.voice_input_version
+def handle_voice_input(building: bool) -> None:
+    """Transcribe microphone audio with Groq Whisper into the prompt field."""
     audio = st.audio_input(
-        "Voice prompt (Whisper)",
-        disabled=session.get("building", False),
-        key=f"voice_prompt_{version}",
+        "Voice prompt",
+        disabled=building,
+        key=f"voice_prompt_{st.session_state.voice_input_version}",
     )
     if audio is None:
         return
@@ -369,20 +379,23 @@ def handle_voice_input(session: dict) -> None:
 
     st.session_state.last_voice_hash = audio_hash
 
-    with st.spinner("Transcribing with Whisper…"):
+    with st.spinner(f"Transcribing with Whisper ({WHISPER_MODEL})…"):
         try:
             text = transcribe_audio(audio_bytes, audio.type or "audio/wav")
         except Exception as exc:
-            st.session_state.voice_status = None
-            st.session_state.pending_voice_text = None
             st.error(f"Voice transcription failed: {exc}")
             return
 
-    if text.strip():
-        st.session_state.pending_voice_text = text.strip()
-        st.session_state.voice_status = "Transcribed — edit if needed, then press Send"
-        st.session_state.voice_input_version += 1
-        st.rerun()
+    if not text.strip():
+        st.warning("No speech detected. Try recording again.")
+        return
+
+    existing = st.session_state.get("prompt_draft", "").strip()
+    merged = f"{existing} {text.strip()}".strip() if existing else text.strip()
+    st.session_state.pending_voice_text = merged
+    st.session_state.voice_input_version += 1
+    st.session_state.last_voice_hash = None
+    st.rerun()
 
 
 def render_chat_panel(session: dict) -> None:
@@ -406,39 +419,35 @@ def render_chat_panel(session: dict) -> None:
         disabled=session.get("building", False),
     )
 
-    if st.session_state.pending_voice_text:
-        st.session_state.prompt_draft = st.session_state.pending_voice_text
-        st.session_state.pending_voice_text = None
-
-    if st.session_state.voice_status:
-        st.caption(st.session_state.voice_status)
+    _prepare_prompt_draft()
+    building = session.get("building", False)
 
     st.text_area(
         "Prompt",
         placeholder=placeholder,
         height=88,
-        disabled=session.get("building", False),
+        disabled=building,
         label_visibility="collapsed",
         key="prompt_draft",
     )
 
-    handle_voice_input(session)
+    st.caption(f"🎤 Record below — transcribed with **{WHISPER_MODEL}** via Groq Whisper")
+    handle_voice_input(building)
 
     if st.button(
         "Send",
         type="primary",
-        disabled=session.get("building", False) or not st.session_state.prompt_draft.strip(),
+        disabled=building or not st.session_state.prompt_draft.strip(),
         use_container_width=True,
     ):
         submit_prompt(session, st.session_state.prompt_draft.strip())
-        st.session_state.prompt_draft = ""
-        st.session_state.voice_status = None
+        st.session_state.clear_prompt_draft = True
         st.session_state.last_voice_hash = None
         st.session_state.pending_voice_text = None
         st.session_state.voice_input_version += 1
         st.rerun()
 
-    if session.get("building") and session["messages"] and session["messages"][-1]["role"] == "user":
+    if building and session["messages"] and session["messages"][-1]["role"] == "user":
         user_request = session["messages"][-1]["content"]
         progress = st.progress(0, text="Working…")
         status = st.empty()
