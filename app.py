@@ -190,9 +190,14 @@ def load_project_from_disk(project_dir: Path) -> dict:
 def run_build(session: dict, user_request: str, placeholders: dict) -> None:
     graph = build_app_graph()
     ui_style = UI_STYLE_PRESETS.get(st.session_state.ui_style, "")
+    chat_history = "\n".join(
+        f"{m.get('role','').upper()}: {m.get('content','').strip()}"
+        for m in session.get("messages", [])[-10:]
+    )
     initial = {
         "user_request": user_request,
         "ui_style": ui_style,
+        "chat_history": chat_history,
         "output_root": str(OUTPUT_ROOT),
         "current_file_index": 0,
         "generated_files": {},
@@ -282,6 +287,10 @@ def run_build(session: dict, user_request: str, placeholders: dict) -> None:
 
 def run_improve(session: dict, user_request: str, placeholders: dict) -> None:
     graph = build_improve_graph()
+    chat_history = "\n".join(
+        f"{m.get('role','').upper()}: {m.get('content','').strip()}"
+        for m in session.get("messages", [])[-10:]
+    )
     initial = {
         "user_request": user_request,
         "plan": session.get("plan", ""),
@@ -290,6 +299,7 @@ def run_improve(session: dict, user_request: str, placeholders: dict) -> None:
         "output_root": session.get("output_root", ""),
         "design_tokens": session.get("design_tokens", ""),
         "ui_style": UI_STYLE_PRESETS.get(st.session_state.ui_style, ""),
+        "chat_history": chat_history,
         "current_file_index": 0,
         "status": "improving",
     }

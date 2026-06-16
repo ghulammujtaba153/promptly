@@ -17,14 +17,36 @@ def _style_block(state: AppBuilderState) -> str:
 def improve_user_prompt(state: AppBuilderState) -> dict:
     """Expand a vague user prompt into a clear, build-ready specification."""
     raw = state["user_request"].strip()
+    chat_history = state.get("chat_history", "").strip()
+    plan = state.get("plan", "").strip()
+    architecture = state.get("architecture", "").strip()
+    generated_files = state.get("generated_files", {}) or {}
     model = get_model()
+
+    context_parts: list[str] = []
+    if plan:
+        context_parts.append(f"Existing plan:\n{plan}")
+    if architecture:
+        context_parts.append(f"Existing architecture:\n{architecture}")
+    if chat_history:
+        context_parts.append(f"Session chat history (most recent last):\n{chat_history}")
+    if generated_files:
+        file_listing = "\n".join(
+            f"- {path} ({len(content)} chars)"
+            for path, content in list(generated_files.items())[:12]
+        )
+        context_parts.append(f"Existing project files:\n{file_listing}")
+    context_block = "\n\n".join(context_parts).strip()
+
     response = model.invoke(
         [
             SystemMessage(content=PROMPT_IMPROVE_SYSTEM),
             HumanMessage(
                 content=(
                     f"{_style_block(state)}"
-                    f"Refine this app request into a clear build specification:\n\n{raw}"
+                    "Use the current session context to keep continuity.\n\n"
+                    f"{context_block + '\n\n' if context_block else ''}"
+                    f"Improvement request:\n{raw}"
                 )
             ),
         ]

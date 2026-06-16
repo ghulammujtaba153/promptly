@@ -11,6 +11,7 @@ class AppBuilderState(TypedDict, total=False):
     raw_user_request: str
     improved_prompt: str
     ui_style: str
+    chat_history: str
     output_root: str
     project_name: str
     plan: str
