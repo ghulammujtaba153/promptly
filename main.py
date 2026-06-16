@@ -47,6 +47,8 @@ def main() -> int:
     )
 
     print("\n=== DONE ===")
+    if result.get("improved_prompt"):
+        print(f"\nImproved prompt:\n{result['improved_prompt']}\n")
     print(f"Project: {result.get('project_name', 'unknown')}")
     print(f"Location: {result.get('output_root')}")
     print(f"Files created: {len(result.get('generated_files', {}))}")

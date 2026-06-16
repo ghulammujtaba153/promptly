@@ -1,6 +1,7 @@
 from langgraph.graph import END, START, StateGraph
 
 from agent.nodes import build_file, create_architecture, create_plan, route_after_build
+from agent.prompt_nodes import improve_user_prompt
 from agent.state import AppBuilderState
 from agent.ui_nodes import (
     create_design_tokens,
@@ -14,6 +15,7 @@ from agent.ui_nodes import (
 def build_app_graph():
     graph = StateGraph(AppBuilderState)
 
+    graph.add_node("improve_prompt", improve_user_prompt)
     graph.add_node("plan", create_plan)
     graph.add_node("design_tokens", create_design_tokens)
     graph.add_node("architecture", create_architecture)
@@ -21,7 +23,8 @@ def build_app_graph():
     graph.add_node("review_ui", review_ui)
     graph.add_node("polish_ui", polish_ui)
 
-    graph.add_edge(START, "plan")
+    graph.add_edge(START, "improve_prompt")
+    graph.add_edge("improve_prompt", "plan")
     graph.add_edge("plan", "design_tokens")
     graph.add_edge("design_tokens", "architecture")
     graph.add_edge("architecture", "build_file")

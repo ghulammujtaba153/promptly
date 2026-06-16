@@ -8,6 +8,8 @@ class FileSpec(TypedDict):
 
 class AppBuilderState(TypedDict, total=False):
     user_request: str
+    raw_user_request: str
+    improved_prompt: str
     ui_style: str
     output_root: str
     project_name: str

@@ -118,6 +118,8 @@ def create_architecture(state: AppBuilderState) -> dict:
     )
     _write_text(project_dir / "ARCHITECTURE.md", architecture_doc)
     _write_text(project_dir / "PLAN.md", state["plan"])
+    if state.get("improved_prompt"):
+        _write_text(project_dir / "IMPROVED_PROMPT.md", state["improved_prompt"])
 
     print("\n=== ARCHITECTURE ===\n")
     print(architecture_doc)

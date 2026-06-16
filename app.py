@@ -87,7 +87,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-BUILD_STEPS = ["plan", "design_tokens", "architecture", "build_file", "review_ui", "polish_ui"]
+BUILD_STEPS = ["improve_prompt", "plan", "design_tokens", "architecture", "build_file", "review_ui", "polish_ui"]
 
 
 def new_session(name: str = "New project") -> dict:
@@ -102,6 +102,7 @@ def new_session(name: str = "New project") -> dict:
         "output_root": None,
         "design_tokens": None,
         "ui_review": None,
+        "improved_prompt": None,
         "created_at": datetime.now().isoformat(),
         "building": False,
     }
@@ -170,7 +171,7 @@ def load_project_from_disk(project_dir: Path) -> dict:
     if tokens_path.exists():
         session["design_tokens"] = tokens_path.read_text(encoding="utf-8")
 
-    for doc in ("PLAN.md", "ARCHITECTURE.md", "UI_REVIEW.md"):
+    for doc in ("PLAN.md", "ARCHITECTURE.md", "UI_REVIEW.md", "IMPROVED_PROMPT.md"):
         doc_path = project_dir / doc
         if doc_path.exists():
             if doc == "PLAN.md":
@@ -179,6 +180,8 @@ def load_project_from_disk(project_dir: Path) -> dict:
                 session["architecture"] = doc_path.read_text(encoding="utf-8")
             elif doc == "UI_REVIEW.md":
                 session["ui_review"] = doc_path.read_text(encoding="utf-8")
+            elif doc == "IMPROVED_PROMPT.md":
+                session["improved_prompt"] = doc_path.read_text(encoding="utf-8")
 
     add_message(session, "assistant", f"Loaded project **{project_dir.name}** ({len(session['generated_files'])} files).")
     return session
@@ -206,7 +209,20 @@ def run_build(session: dict, user_request: str, placeholders: dict) -> None:
 
     for event in graph.stream(initial, stream_mode="updates"):
         for node, update in event.items():
-            if node == "plan":
+            if node == "improve_prompt":
+                session["improved_prompt"] = update.get("improved_prompt")
+                step += 1
+                progress.progress(step / total_steps, text="Refining prompt…")
+                status.info("✨ Prompt refined")
+                improved = update.get("improved_prompt", "")
+                if improved:
+                    add_message(
+                        session,
+                        "assistant",
+                        f"**Refined your prompt:**\n\n{improved}",
+                    )
+
+            elif node == "plan":
                 session["plan"] = update.get("plan")
                 step += 1
                 progress.progress(step / total_steps, text="Planning…")
@@ -285,7 +301,19 @@ def run_improve(session: dict, user_request: str, placeholders: dict) -> None:
 
     for event in graph.stream(initial, stream_mode="updates"):
         for node, update in event.items():
-            if node == "analyze_improvement":
+            if node == "improve_prompt":
+                session["improved_prompt"] = update.get("improved_prompt")
+                progress.progress(0.1, text="Refining prompt…")
+                status.info("✨ Prompt refined")
+                improved = update.get("improved_prompt", "")
+                if improved:
+                    add_message(
+                        session,
+                        "assistant",
+                        f"**Refined your request:**\n\n{improved}",
+                    )
+
+            elif node == "analyze_improvement":
                 queue_len = len(update.get("file_queue", []))
                 session["architecture"] = update.get("architecture", session.get("architecture"))
                 progress.progress(0.2, text="Analyzing improvements…")
@@ -527,6 +555,9 @@ def render_preview_panel(session: dict) -> None:
             st.code(files[selected], language=lang, line_numbers=True)
 
     with tab_plan:
+        if session.get("improved_prompt"):
+            st.markdown("#### Refined prompt")
+            st.markdown(session["improved_prompt"])
         if session.get("plan"):
             st.markdown("#### Plan")
             st.markdown(session["plan"])
